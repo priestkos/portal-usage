@@ -1,0 +1,8 @@
+{
+  "name": "portal-usage",
+  "label": "Portal Usage",
+  "description": "Usage limits and remaining budget for OpenCode Go, OpenRouter and the Nous Portal, surfaced in the desktop status bar.",
+  "icon": "CreditCard",
+  "version": "1.0.0",
+  "api": "plugin_api.py"
+}

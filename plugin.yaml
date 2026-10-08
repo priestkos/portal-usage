@@ -1,0 +1,3 @@
+name: portal-usage
+version: 1.0.0
+description: "Status-bar chip and panel tracking usage limits and remaining budget across OpenCode Go, OpenRouter and the Nous Portal. Ships a desktop half (plugins/portal-usage/desktop/plugin.js) and a backend (dashboard/plugin_api.py)."
