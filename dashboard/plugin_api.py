@@ -33,25 +33,9 @@ router = APIRouter()
 # A portal fetch is one HTTP round trip; the OpenRouter numbers are cached
 # server-side for ~60s anyway, so polling faster buys nothing.
 _CACHE_TTL_S = 60.0
-_PRICING_TTL_S = 900.0
-
-# Reference model per portal, used ONLY to turn a dollar balance into an
-# approximate token count. The price itself is read live from the provider's
-# catalogue through Hermes's pricing module — no rate is hardcoded here.
-_REFERENCE_MODEL: dict[str, str] = {
-    "opencode-go": "deepseek-v4-flash",
-    "openrouter": "deepseek/deepseek-v4.1-flash",
-    "nous": "deepseek/deepseek-v4.1-flash",
-}
-
-# OpenCode Go plan caps in USD, as published at https://opencode.ai/docs/go/ —
-# the usage API returns only a percentage, so these turn that percentage into a
-# dollar figure. Flagged as assumed in the payload; never presented as measured.
-_GO_PLAN_CAPS_USD: dict[str, float] = {"rolling": 12.0, "weekly": 30.0, "monthly": 60.0}
 
 _lock = threading.Lock()
 _cache: dict[str, Any] = {"at": 0.0, "payload": None}
-_price_cache: dict[str, Any] = {"at": 0.0, "entries": {}}
 
 _MONEY_RE = re.compile(r"\$([\d,]+(?:\.\d+)?)")
 _PAIR_RE = re.compile(r"\$([\d,]+(?:\.\d+)?)\s+of\s+\$([\d,]+(?:\.\d+)?)")
@@ -119,50 +103,6 @@ def _windows(snapshot: Any) -> list[dict[str, Any]]:
     return out
 
 
-def _price_per_token(provider: str) -> tuple[Optional[float], Optional[str]]:
-    """(USD per input token, model) from the provider's live catalogue, cached."""
-    now = time.monotonic()
-    with _lock:
-        if now - _price_cache["at"] < _PRICING_TTL_S and provider in _price_cache["entries"]:
-            return _price_cache["entries"][provider]
-
-    model = _REFERENCE_MODEL.get(provider)
-    result: tuple[Optional[float], Optional[str]] = (None, model)
-    if model:
-        try:
-            from agent.usage_pricing import get_pricing_entry
-
-            entry = get_pricing_entry(model, provider=provider)
-            per_million = _num(getattr(entry, "input_cost_per_million", None)) if entry else None
-            if per_million and per_million > 0:
-                result = (per_million / 1_000_000.0, model)
-        except Exception:  # noqa: BLE001 — pricing is best-effort, never fatal
-            log.debug("portal-usage: pricing lookup failed for %s/%s", provider, model, exc_info=True)
-
-    with _lock:
-        _price_cache["at"] = now
-        _price_cache["entries"][provider] = result
-    return result
-
-
-def _estimate(provider: str, spendable_usd: Optional[float]) -> dict[str, Any]:
-    """Approximate tokens buyable with *spendable_usd* at the reference model's rate."""
-    price, model = _price_per_token(provider)
-    tokens: Optional[int] = None
-    if spendable_usd is not None and price and price > 0:
-        tokens = int(spendable_usd / price)
-    return {
-        "tokens": tokens,
-        "model": model,
-        "price_per_million_usd": None if price is None else round(price * 1_000_000.0, 4),
-        "basis": "input-rate",
-        "reason": None if tokens is not None else (
-            "No per-token price is published for this provider, so a token estimate is not derivable."
-            if price is None else "No dollar balance reported."
-        ),
-    }
-
-
 def _portal(pid: str, label: str) -> dict[str, Any]:
     return {
         "id": pid, "label": label, "ok": False, "error": None,
@@ -170,9 +110,6 @@ def _portal(pid: str, label: str) -> dict[str, Any]:
         "windows": [], "details": [],
         "money": {"balance_usd": None, "limit_usd": None, "remaining_usd": None,
                   "total_usable_usd": None},
-        "estimate": {"tokens": None, "model": _REFERENCE_MODEL.get(pid),
-                     "price_per_million_usd": None, "basis": "input-rate",
-                     "reason": None, "assumed_usd": None, "assumed_note": None},
     }
 
 
@@ -196,21 +133,6 @@ def _collect_opencode_go() -> dict[str, Any]:
     portal["fetched_at"] = _iso(getattr(snapshot, "fetched_at", None))
     portal["windows"] = _windows(snapshot)
     portal["details"] = [str(line) for line in (getattr(snapshot, "details", ()) or ())]
-
-    # The API reports percentages only. Turn the monthly window into a dollar
-    # figure from the DOCUMENTED plan caps so the token estimate has an input;
-    # the payload marks it as assumed so the UI can label it.
-    monthly = next((w for w in portal["windows"] if w["label"].lower().startswith("month")), None)
-    if monthly and monthly["remaining_percent"] is not None:
-        assumed = monthly["remaining_percent"] / 100.0 * _GO_PLAN_CAPS_USD["monthly"]
-        note = (
-            f"Assumes the Go plan (${_GO_PLAN_CAPS_USD['monthly']:.0f}/month); "
-            "Go publishes percentages, not dollars."
-        )
-        portal["estimate"] = {**_estimate("opencode-go", assumed), "assumed_usd": round(assumed, 2),
-                              "assumed_note": note}
-    else:
-        portal["estimate"]["reason"] = "OpenCode Go reported no monthly window."
     return portal
 
 
@@ -231,10 +153,9 @@ def _collect_openrouter() -> dict[str, Any]:
     portal["windows"] = [w for w in _windows(snapshot) if "api key quota" not in w.get("label", "").lower()]
     portal["details"] = [str(line) for line in (getattr(snapshot, "details", ()) or ())]
 
-    # "Credits balance: $97.36" is the account runway the estimate should use.
+    # "Credits balance: $97.36" is the account runway.
     balance = next((_money(line) for line in portal["details"] if "balance" in line.lower()), None)
     portal["money"]["balance_usd"] = balance
-    portal["estimate"] = {**portal["estimate"], **_estimate("openrouter", balance)}
     return portal
 
 
@@ -285,10 +206,6 @@ def _collect_nous() -> dict[str, Any]:
     if getattr(info, "paid_service_access", None) is False:
         portal["details"].append("Paid service access is currently disabled.")
 
-    spendable = portal["money"]["total_usable_usd"]
-    if spendable is None:
-        spendable = portal["money"]["remaining_usd"]
-    portal["estimate"] = {**portal["estimate"], **_estimate("nous", spendable)}
     return portal
 
 

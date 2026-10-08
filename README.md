@@ -10,10 +10,9 @@ Surfaces as a compact status-bar chip on `statusBar.right` with an interactive p
 
 ## Features
 
-- **Three View Modes:**
+- **Two View Modes:**
   - **A (Budget):** Native units as reported by each provider (percentages and dollar figures).
-  - **B (≈Tokens):** Derived estimated token runway calculated from live catalogue pricing for reference models.
-  - **C (Context):** Live token usage and percentage of the active chat's context window.
+  - **B (Context):** Live token usage and percentage of the active chat's context window.
 - **Unified Architecture:** Ships both the Python dashboard API route (`/api/plugins/portal-usage/usage`) and the frontend desktop plugin (`desktop/plugin.js`).
 - **Zero Third-Party Dependencies:** Relies entirely on built-in Hermes runtime facilities and `@hermes/plugin-sdk`.
 

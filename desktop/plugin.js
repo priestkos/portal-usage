@@ -5,10 +5,9 @@
  * machine runs against (OpenCode Go, OpenRouter, Nous Portal). Click the chip
  * for all three at once.
  *
- * Three readouts, switchable in the panel and remembered via ctx.storage:
+ * Two readouts, switchable in the panel and remembered via ctx.storage:
  *   A  Budget   — the numbers each portal actually publishes (%, $)
- *   B  ≈Tokens  — remaining budget converted to an approximate token count
- *   C  Context  — tokens left in the focused chat's context window
+ *   B  Context  — tokens left in the focused chat's context window
  *
  * Loaded uncompiled: jsx() calls only, and the only importable specifiers are
  * @hermes/plugin-sdk, react and react/jsx-runtime.
@@ -25,8 +24,7 @@ const ID = 'portal-usage'
 
 const MODES = [
   { id: 'a', label: 'Budget' },
-  { id: 'b', label: '≈Tokens' },
-  { id: 'c', label: 'Context' }
+  { id: 'b', label: 'Context' }
 ]
 
 /** Short labels for the three portals, in the order the backend returns them. */
@@ -95,8 +93,7 @@ function headlineUsd(portal) {
 }
 
 /** Compact per-mode readout for one portal, used by the chip. */
-function shortValue(portal, mode) {
-  if (mode === 'b') return fmtTokens(portal.estimate ? portal.estimate.tokens : null)
+function shortValue(portal) {
   const value = headlineUsd(portal)
   if (typeof value !== 'number') return '—'
   // Percent-only portals (OpenCode Go) report a fraction; the others report USD.
@@ -149,7 +146,7 @@ function Chip({ ctx, mode }) {
   const current = useValue(mode)
   const { data, isError } = useUsage(ctx)
 
-  if (current === 'c') {
+  if (current === 'b') {
     return jsx('span', {
       className: 'inline-flex h-full items-center gap-2 px-1.5 text-[0.6875rem] text-(--ui-text-tertiary)',
       children: jsx(ContextReadout, {})
@@ -171,7 +168,7 @@ function Chip({ ctx, mode }) {
         jsx('span', { className: 'text-(--ui-text-quaternary)', children: SHORT[portal.id] || portal.id }),
         jsx('span', {
           className: cn('tabular-nums', portal.ok ? 'text-(--ui-text-primary)' : 'text-(--ui-text-quaternary)'),
-          children: portal.ok ? shortValue(portal, current) : '—'
+          children: portal.ok ? shortValue(portal) : '—'
         })
       ]
     })
@@ -213,8 +210,7 @@ function WindowBar({ window }) {
   })
 }
 
-function PortalCard({ portal, mode }) {
-  const estimate = portal.estimate || {}
+function PortalCard({ portal }) {
   const money = portal.money || {}
   const rows = portal.windows || []
   return jsxs('div', {
@@ -231,9 +227,7 @@ function PortalCard({ portal, mode }) {
           }),
           jsx('span', {
             className: 'pu-num pu-strong',
-            children: mode === 'b'
-              ? `≈ ${fmtTokens(estimate.tokens)}`
-              : (typeof money.balance_usd === 'number' ? fmtUsd(money.balance_usd) : fmtUsd(money.total_usable_usd))
+            children: typeof money.balance_usd === 'number' ? fmtUsd(money.balance_usd) : fmtUsd(money.total_usable_usd)
           })
         ]
       }),
@@ -251,17 +245,6 @@ function PortalCard({ portal, mode }) {
             className: 'pu-details',
             children: portal.details.map((line, index) => jsx('div', { children: line }, index))
           })
-        : null,
-      mode === 'b'
-        ? jsx('div', {
-            className: 'pu-dim pu-est',
-            children: estimate.tokens
-              ? `≈ ${estimate.tokens.toLocaleString()} tokens at ${estimate.model} (input rate)`
-              : (estimate.reason || 'No token estimate available.')
-          })
-        : null,
-      mode === 'b' && estimate.assumed_note
-        ? jsx('div', { className: 'pu-dim pu-est', children: estimate.assumed_note })
         : null
     ]
   })
@@ -296,7 +279,7 @@ function Panel({ ctx, mode }) {
         ? jsx('div', { className: 'pu-warn', children: `Backend unreachable: ${(error && error.message) || 'unknown error'}` })
         : null,
       portals.length
-        ? portals.map(portal => jsx(PortalCard, { portal, mode: current }, portal.id))
+        ? portals.map(portal => jsx(PortalCard, { portal }, portal.id))
         : jsx('div', { className: 'pu-dim', children: isLoading ? 'Loading…' : 'No data.' }),
       jsxs('div', {
         className: 'pu-grid pu-foot',
@@ -352,7 +335,6 @@ const CSS = `
 .pu-track { height: 3px; border-radius: 999px; background: var(--ui-bg-quaternary); overflow: hidden; }
 .pu-fill { height: 100%; background: var(--ui-accent); }
 .pu-details { display: flex; flex-direction: column; gap: 1px; font-size: 0.6875rem; color: var(--ui-text-tertiary); }
-.pu-est { font-size: 0.6875rem; }
 .pu-warn { color: var(--ui-text-secondary); font-size: 0.6875rem; }
 .pu-foot { font-size: 0.625rem; color: var(--ui-text-quaternary); }
 `
