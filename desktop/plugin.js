@@ -190,14 +190,16 @@ function WindowRow({ window }) {
   if (/^(Rolling window|Weekly|Monthly|API key quota|Subscription)$/i.test(label.trim())) {
     label = `${label.trim()} `
   }
-  const rollover = window.rollover_active ? ' · rollover is active' : ''
   return jsxs('div', {
     className: 'pu-grid pu-row',
     children: [
       jsx('span', { children: label }),
-      jsx('span', {
+      jsxs('span', {
         className: 'pu-num',
-        children: `${fmtPct(window.remaining_percent)} left${reset ? ` · resets ${reset}` : ''}${rollover}`
+        children: [
+          window.rollover_active ? jsx('span', { className: 'pu-strong', children: 'Rollover · ' }) : null,
+          `${fmtPct(window.remaining_percent)} left${reset ? ` · resets ${reset}` : ''}`
+        ]
       })
     ]
   })
