@@ -194,12 +194,9 @@ function WindowRow({ window }) {
     className: 'pu-grid pu-row',
     children: [
       jsx('span', { children: label }),
-      jsxs('span', {
+      jsx('span', {
         className: 'pu-num',
-        children: [
-          window.rollover_active ? jsx('span', { className: 'pu-strong', children: 'Rollover · ' }) : null,
-          `${fmtPct(window.remaining_percent)} left${reset ? ` · resets ${reset}` : ''}`
-        ]
+        children: `${fmtPct(window.remaining_percent)} left${reset ? ` · resets ${reset}` : ''}`
       })
     ]
   })

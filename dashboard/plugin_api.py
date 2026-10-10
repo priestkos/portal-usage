@@ -204,11 +204,8 @@ def _collect_nous() -> dict[str, Any]:
             if value is not None:
                 portal["details"].append(f"{label}: ${value:.2f}")
         portal["money"]["total_usable_usd"] = _num(getattr(access, "total_usable_credits", None))
-        if sub_credits is not None and sub_credits >= 50.0:
-            portal["rollover_active"] = True
-            for w in portal["windows"]:
-                if "subscription" in w.get("label", "").lower():
-                    w["rollover_active"] = True
+        if sub_credits is not None and sub_credits <= 50.0:
+            portal["details"].append("Rollover")
     if getattr(info, "paid_service_access", None) is False:
         portal["details"].append("Paid service access is currently disabled.")
 
